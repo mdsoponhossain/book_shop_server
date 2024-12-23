@@ -86,6 +86,13 @@ const dbConnect = async () => {
       res.send(users);
     });
 
+    // get wishlist of user:
+    app.get("/users-wishlist/:email", async (req, res) => {
+      const buyerEmail = req.params.email;
+      const result = await userCollection.findOne({ email: buyerEmail });
+      res.send(result);
+    });
+
     // delete a  users:
     app.delete("/users/:id", async (req, res) => {
       const result = await userCollection.deleteOne({
@@ -167,6 +174,21 @@ const dbConnect = async () => {
           sellerEmail: req?.params?.email,
         })
         .toArray();
+      res.send(result);
+    });
+
+    // buyer cart post:
+    app.post("/books/cart/:email", async (req, res) => {
+      const buyerEmail = req?.params?.email;
+      const product = req.body?.product;
+      const result = await userCollection.updateOne(
+        { email: buyerEmail },
+        {
+          $push: {
+            wishlist: product,
+          },
+        }
+      );
       res.send(result);
     });
 
