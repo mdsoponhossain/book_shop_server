@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 4000;
@@ -9,7 +9,7 @@ const port = process.env.PORT || 4000;
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: ["http://localhost:5173", "https://boi-ghor-827b2.web.app"],
     credentials: true,
   })
 );
@@ -54,8 +54,13 @@ const client = new MongoClient(uri, {
 });
 
 // database & collection :
-const userCollection = client.db("gadgetShop").collection("users");
-const productCollection = client.db("gadgetShop").collection("products");
+const userCollection = client.db("bookShop_DB").collection("users_collection");
+const newBooksCollection = client
+  .db("bookShop_DB")
+  .collection("newBooks_collection");
+const productCollection = client
+  .db("bookShop_DB")
+  .collection("books_collection");
 
 const dbConnect = async () => {
   try {
@@ -68,10 +73,42 @@ const dbConnect = async () => {
       const user = await userCollection.findOne(query);
       res.send(user);
     });
+    // find new book collection:
+    app.get("/new-books", async (req, res) => {
+      const result = await newBooksCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get all users:
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      const users = await result?.filter((user) => user.role !== "admin");
+      res.send(users);
+    });
+
+    // delete a  users:
+    app.delete("/users/:id", async (req, res) => {
+      const result = await userCollection.deleteOne({
+        _id: new ObjectId(req?.params?.id),
+      });
+      res.send(result);
+    });
+
+    // update a users:
+    app.patch("/users/:id", async (req, res) => {
+      const updateDoc = {
+        $set: {
+          role: req?.body?.role,
+        },
+      };
+      const filter = { _id: new ObjectId(req?.params?.id) };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
 
     // insert user:
 
-    app.post("/users", async (req, res) => {
+    app.post("/user", async (req, res) => {
       const user = req?.body;
       const query = { email: user?.email };
       const existingUser = await userCollection.findOne(query);
@@ -83,23 +120,65 @@ const dbConnect = async () => {
     });
 
     // add product:
-    app.post("/add-product", verifyJWT, verifySeller, async (req, res) => {
+    app.post("/add-product", async (req, res) => {
       const product = req.body;
       const result = await productCollection.insertOne(product);
       res.send(result);
     });
 
+    // add product:
+    app.patch("/update-product/:id", async (req, res) => {
+      const product = req.body;
+      console.log(product);
+      const result = await productCollection.updateOne(
+        {
+          _id: new ObjectId(req?.params?.id),
+        },
+        {
+          $set: {
+            ...product,
+          },
+        }
+      );
+      res.send(result);
+    });
+
+    // get a book:
+    app.get("/books/book/:id", async (req, res) => {
+      console.log("a single:book", req?.params);
+      const result = await productCollection.findOne({
+        _id: new ObjectId(req?.params?.id),
+      });
+      res.send(result);
+    });
+
+    // get a book:
+    app.delete("/books/delete/:id", async (req, res) => {
+      const result = await productCollection.deleteOne({
+        _id: new ObjectId(req?.params?.id),
+      });
+      res.json(result);
+    });
+
+    // get books for seller:
+    app.get("/books/:email", async (req, res) => {
+      const result = await productCollection
+        .find({
+          sellerEmail: req?.params?.email,
+        })
+        .toArray();
+      res.send(result);
+    });
+
     // get product:
-    app.get("/all-products", async (req, res) => {
-      // console.log(req?.query, 5555);
-      const { title, sort, category, brand, page = 1, limit = 6 } = req.query;
+    app.get("/books", async (req, res) => {
+      const { name, sort, category, brand, page = 1, limit = 6 } = req.query;
       const pageNumber = Number(page);
       const limitNumber = Number(limit);
       const query = {};
-      if (title) {
-        query.title = { $regex: title, $options: "i" };
+      if (name) {
+        query.name = { $regex: name, $options: "i" };
       }
-
       if (category) {
         query.category = { $regex: category, $options: "i" };
       }
@@ -113,16 +192,12 @@ const dbConnect = async () => {
         .limit(limitNumber)
         .sort({ price: sortOption })
         .toArray();
-
       const totalProducts = await productCollection.countDocuments();
-
       const brands = [...new Set(products.map((product) => product.brand))];
-
       const categories = [
         ...new Set(products.map((product) => product.category)),
       ];
-
-      res.json({ products, brands, categories, totalProducts });
+      res.json({ totalProducts, brands, categories, products });
     });
   } catch (error) {
     console.log(error?.name, error?.message);
@@ -141,7 +216,6 @@ app.post("/authentication", async (req, res) => {
   const token = jwt.sign(userEmail, process.env.ACCESS_KEY_TOKEN, {
     expiresIn: "10d",
   });
-  // console.log(token, 1111);
   res.send({ token });
 });
 
